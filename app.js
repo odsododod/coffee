@@ -2,6 +2,20 @@ const scene = document.querySelector('#scene');
 const partButtons = [...document.querySelectorAll('.part')];
 const selected = new Set(['door']);
 const status = document.querySelector('#build-status');
+const form = document.querySelector('#brief-form');
+const colorSelect = document.querySelector('#door-color');
+
+function updateOrderDesign() {
+  const names = partButtons
+    .filter(button => selected.has(button.dataset.part))
+    .map(button => button.querySelector('small').textContent.trim());
+  const description = names.join(', ');
+  document.querySelector('#selected-parts').value = description;
+  document.querySelector('#order-parts').textContent = description;
+  document.querySelector('#order-color').textContent = colorSelect.value.toLowerCase();
+  scene.dataset.color = colorSelect.selectedOptions[0].dataset.color;
+}
+
 function renderCollection() {
   for (const button of partButtons) {
     const part = button.dataset.part;
@@ -14,7 +28,9 @@ function renderCollection() {
   status.textContent = selected.size === 5
     ? 'Ваша кофейня собрана. Можно заходить на кофе.'
     : `${selected.size} из 5 деталей. История продолжается.`;
+  updateOrderDesign();
 }
+
 for (const button of partButtons) {
   button.addEventListener('click', () => {
     const part = button.dataset.part;
@@ -22,34 +38,63 @@ for (const button of partButtons) {
       status.textContent = 'Дом и дверь — основа коллекции. Добавьте навес, столик, зелень или кота.';
       return;
     }
-    selected.has(part) ? selected.delete(part) : selected.add(part);
+    if (selected.has(part)) {
+      selected.delete(part);
+    } else {
+      selected.add(part);
+    }
     renderCollection();
   });
 }
+
 document.querySelector('#reset').addEventListener('click', () => {
   selected.clear();
   selected.add('door');
   renderCollection();
 });
-document.querySelector('#brief-form').addEventListener('submit', event => {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const data = new FormData(form);
-  const cafe = data.get('cafe').trim();
-  const details = data.get('details').trim();
-  if (!cafe || !details) {
-    document.querySelector('#form-status').textContent = 'Заполните название и описание кофейни.';
-    return;
+colorSelect.addEventListener('change', updateOrderDesign);
+
+for (const field of form.querySelectorAll('input[required], textarea[required]')) {
+  field.addEventListener('input', () => field.setCustomValidity(''));
+}
+
+form.addEventListener('submit', event => {
+  updateOrderDesign();
+  for (const field of form.querySelectorAll('input[required], textarea[required]')) {
+    field.value = field.value.trim();
+    field.setCustomValidity(field.value ? '' : 'Заполните это поле.');
   }
-  const text = `КОФЕЙНЫЙ ГОРОД\nБриф миниатюры\n\nНазвание кофейни: ${cafe}\n\nОсобенные детали:\n${details}\n\nПервая коллекция: ${data.get('pieces')}\n\nЭто сохранённый бриф концепции. Он не является заказом и не отправлен исполнителю.\n`;
-  const url = URL.createObjectURL(new Blob(['\uFEFF', text], { type: 'text/plain;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = 'coffee-city-brief.txt';
-  document.body.append(link);
-  link.click();
-  link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  document.querySelector('#form-status').textContent = 'Бриф подготовлен и передан браузеру для скачивания.';
+  if (!form.reportValidity()) {
+    event.preventDefault();
+  }
 });
+
+// Restore the visible preview after returning from the form provider.
+window.addEventListener('pageshow', updateOrderDesign);
 renderCollection();
+
+// Let a visitor send the same request using their own mail application.
+document.querySelector('#mail-fallback').addEventListener('click', () => {
+  updateOrderDesign();
+  for (const field of form.querySelectorAll('input[required], textarea[required]')) {
+    field.value = field.value.trim();
+    field.setCustomValidity(field.value ? '' : 'Заполните это поле.');
+  }
+  if (!form.reportValidity()) return;
+  const data = new FormData(form);
+  const fields = [
+    ['Имя', 'name'],
+    ['Почта для ответа', 'email'],
+    ['Кофейня', 'Название кофейни'],
+    ['Дизайн', 'Пожелания к дизайну'],
+    ['Фото или страница кафе', 'Фото или страница кафе'],
+    ['Детали', 'Выбранные детали'],
+    ['Цвет двери', 'Цвет двери'],
+    ['Количество', 'Количество миниатюр'],
+    ['Размер коллекции', 'Размер коллекции'],
+  ];
+  const body = fields.map(([label, name]) => `${label}: ${data.get(name) || 'Не указано'}`).join('\n\n');
+  const subject = 'Кофейный город — заявка на миниатюру';
+  window.location.href = `mailto:tikhonkobz@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  document.querySelector('#mail-status').textContent = 'Заявка подготовлена. Завершите отправку в вашей почтовой программе. Если она не открылась, напишите на tikhonkobz@gmail.com.';
+});
